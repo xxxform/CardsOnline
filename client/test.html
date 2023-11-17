@@ -1,0 +1,45 @@
+<script>
+    const rejects = [];
+    const resolves = [];
+
+    function *waitCards(player) {
+        const handler = message => {
+            resolves.pop()(message);
+            rejects.pop();
+        }
+
+        player.addEventListener('message', handler);
+
+        try {
+            while (true) {
+                yield new Promise((resolve, reject) => {
+                    resolves.push(resolve);
+                    rejects.push(reject);
+                });
+            }
+        } catch(e) {
+            player.removeEventListener('message', handler);
+            rejects.forEach(rej => rej('cancelled'));
+        }
+    } 
+
+    ee = new EventTarget();
+    generator = waitCards(ee); 
+
+    //generator.next();
+
+    (async function () {
+        for (let card of generator) {
+            card = await card;
+            console.log('gen', card);
+        }
+    })();
+    // 
+    //     for await (let val of generator) 
+    //         console.log('gen', val);
+    // })();
+
+    //ee.dispatchEvent(new Event("message"));
+    //generator.throw()
+
+</script>
