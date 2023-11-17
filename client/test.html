@@ -10,26 +10,22 @@
 
         player.addEventListener('message', handler);
 
-        try {
-            while (true) {
-                yield new Promise((resolve, reject) => {
-                    resolves.push(resolve);
-                    rejects.push(reject);
-                });
-            }
-        } catch(e) {
-            player.removeEventListener('message', handler);
-            rejects.forEach(rej => rej('cancelled'));
-            //yield '12';
-        }
+        let result;
+        while (!(result = yield new Promise((resolve, reject) => {
+            resolves.push(resolve);
+            rejects.push(reject);
+        }))) {};
+    
+        player.removeEventListener('message', handler);
+        resolves.forEach(res => res(result));
+        return result;
     } 
 
     ee = new EventTarget();
     generator = waitCards(ee); 
 
-    generator.next().value.catch(() => 'ничего');
-
-    generator.throw();
+    // generator.next();
+    // generator.throw();
     //generator.throw();
 
     /*(async function () {
@@ -41,12 +37,7 @@
     })().catch(e => {
         debugger
     });*/
-    
-    try {
-        
-    } catch(e) {
-        debugger
-    }
+
     
     // 
     //     for await (let val of generator) 
