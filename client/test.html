@@ -20,20 +20,34 @@
         } catch(e) {
             player.removeEventListener('message', handler);
             rejects.forEach(rej => rej('cancelled'));
+            //yield '12';
         }
     } 
 
     ee = new EventTarget();
     generator = waitCards(ee); 
 
-    //generator.next();
+    generator.next().value.catch(() => 'ничего');
 
-    (async function () {
+    generator.throw();
+    //generator.throw();
+
+    /*(async function () {
         for (let card of generator) {
-            card = await card;
+            card = await card.catch(e => console.log('e',e));
+            const a = generator.throw();
             console.log('gen', card);
         }
-    })();
+    })().catch(e => {
+        debugger
+    });*/
+    
+    try {
+        
+    } catch(e) {
+        debugger
+    }
+    
     // 
     //     for await (let val of generator) 
     //         console.log('gen', val);

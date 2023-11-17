@@ -235,22 +235,16 @@ module.exports = class Game {
         const handler = message => {
             message = JSON.parse(message);
             if (message.event !== 'step') return;
-            let card = null;
 
-            if (message.card) {
-                const cardIndex = player.cards.findIndex(card => 
-                    card.suit === message.card.suit && card.name === message.card.name);
-                if (~cardIndex) {
-                    card = player.cards[cardIndex];
-                    player.cards.splice(cardIndex, 1);
-                }
-            }
+            const card = message.card ? player.cards.find(card => 
+                card.suit === message.card.suit && card.name === message.card.name) : null;
 
             resolves.pop()(card);
             rejects.pop();
         }
 
         player.socket.on('message', handler);
+        this.changeStatus(player);
 
         try {
             while (true) {
@@ -261,7 +255,8 @@ module.exports = class Game {
             }
         } catch(e) {
             player.socket.removeListener('message', handler);
-            rejects.forEach(rej => rej('cancelled'));
+            rejects.forEach(rej => rej(e));
+            this.changeStatus(player);
         }
     }
 
@@ -281,15 +276,43 @@ module.exports = class Game {
 
         this.changeStatus(player);
 
+        //проверка на победителя и проигравшего. Игра окончена если getNextPlayer вернул того же игрока
         try {
+            const playerCardsGenerator = this.waitCards(player);
+            const timer = setTimeout(() => playerCardsGenerator.throw('timeout'), 15000);
+
+            for (let card of playerCardsGenerator) {
+                try { card = await card } 
+                catch (e) { 
+                    if (e === 'timeout') 
+                        card = player.cards.pop();
+                }
+
+                // игрок не захотел подкидывать дальше 
+                if (!card && allAttackCards.length) {
+                    playerCardsGenerator.throw();
+                    clearTimeout(timer);
+                }
+
+                player.cards.splice(player.cards(card), 1);
+                allAttackCards.push(card);
+                this.playerAttackBroadcast(player, card);
+                
+                //больше нечего подкидывать/отбивающемуся больше нечем отбиваться
+                if (!player.cards.some(pcard => card.name === pcard.name) || defencePlayer.cards.length < 2) {
+                    playerCardsGenerator.throw();
+                    clearTimeout(timer);
+                }
+
+                //вызов gen.throw() после первого раза вызывает ошибку на месет вызова поэтому clearTimeout(timer);
+            }
+
+
             //атака player'ом defencePlayer'а
             await new Promise(resove => {
                 let timer = null;
-                //проверка на победителя и проигравшего. Игра окончена если getNextPlayer вернул того же игрока
+                
                 const handler = message => {
-                    message = JSON.parse(message);
-                    if (message.event !== 'step') return;
-
                      // !message.card - игрок не захотел подкидывать дальше 
                      if (!message.card && allAttackCards.length) { 
                         clearTimeout(timer);
