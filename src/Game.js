@@ -113,7 +113,7 @@ module.exports = class Game {
             nextPlayer = this.players[getOverflowIndex(++currentPlayerIndex, this.players.length)]
         }
 
-        return nextPlayer;
+        return [nextPlayer, currentPlayerIndex];
     }
 
     gameOver(player) {
@@ -187,41 +187,36 @@ module.exports = class Game {
         return count;
     }
 
-    async waitAllAdditionCards(defencePlayer, attackPlayer, allAttackCards, allDefenceCards, timeout = 15000) {
-        //ждём пока все игроки дадут вдогон если есть
+    //ждёт пока все игроки подкинут если есть
+    async waitAllAdditionCards(addCardsPlayers, defencePlayer, allAttackCards, allDefenceCards) { 
         const allCards = allAttackCards.concat(allDefenceCards);
+        const playersCanAdd = addCardsPlayers.filter(player => player.cards.some(card => allCards.some(acard => acard.name === card.name)));
+        const playerGenerators = [];
+        setTimeout(() => playerGenerators.forEach(gen => gen.next(true)), 15000);
+        const checkDefencePlayerOverflow = () => allAttackCards.length >= 6 || allAttackCards.length >= defencePlayer.cards.length + allDefenceCards.length;
 
-        const playersCanAdd = this.players.filter(player => player.cards.some(card => allCards.some(acard => acard.name === card.name)));
-        const indexOfAttackPlayer = playersCanAdd.indexOf(attackPlayer);
-        const timer = null;
+        for (let playerAdd of playersCanAdd) {
+            const playerCardsGenerator = this.waitCards(player);
+            playerGenerators.push(playerCardsGenerator);
 
-        const handler = function handler(message) {
-            
-        };
+            for (let card of playerCardsGenerator) {
+                card = await card;
+                if (card === Symbol.for('break')) break;
+                if (!card) { playerCardsGenerator.next(true); break }
 
-        if (~indexOfAttackPlayer) {
-            //подождать пока атакующий докинет карты. затем дать право это сделать остальным
-        }
+                if (checkDefencePlayerOverflow()) 
+                    return playerGenerators.forEach(gen => gen.next(true));
+                
+                playerAdd.cards.splice(playerAdd.cards.indexOf(card), 1);
+                allAttackCards.push(card);
+                this.playerAttackBroadcast(playerAdd, card);
 
-        //больше не лезет
-        if (allAttackCards.length >= 6 || allAttackCards.length >= defencePlayer.cards.length + allDefenceCards.length ) {
-            for (const playerTo of this.players) {
-                if (defencePlayer === playerTo) continue;
-                playerTo.socket.removeListener('message', handler);
+                if (checkDefencePlayerOverflow()) 
+                    return playerGenerators.forEach(gen => gen.next(true));
+
+                if (!playerAdd.cards.some(pcard => card.name === pcard.name)) 
+                    playerCardsGenerator.next(true);
             }
-            //ходит следующий игрок. завершить gameloop через throw promiseReject 
-        }
-
-        
-
-        for (const playerTo of this.players) {
-            if (defencePlayer === playerTo) continue;
-
-            player.socket.on('message', handler);
-
-            playerTo.socket.send(JSON.stringify({event: 'remCard', data: {
-                type: 'desc', card: cards.length
-            }})); 
         }
     }
 
@@ -241,7 +236,7 @@ module.exports = class Game {
             const card = message.card ? player.cards.find(card => 
                 card.suit === message.card.suit && card.name === message.card.name) : null;
 
-            resolves.pop()(card);
+            (resolves.pop() || (()=>{}))(card);
             rejects.pop();
         }
 
@@ -255,14 +250,14 @@ module.exports = class Game {
         }))) {};
     
         player.socket.removeListener('message', handler);
-        resolves.forEach(res => res(result));
+        resolves.forEach(res => res(Symbol.for('break')));
         this.changeStatus(player);
         return result;
     }
 
     async gameLoop(currentPlayerIndex, isFirst = false) {
         const player = this.players[currentPlayerIndex];
-        const defencePlayer = this.getNextPlayer(currentPlayerIndex);
+        const [defencePlayer, defencePlayerIndex] = this.getNextPlayer(currentPlayerIndex);
 
         if (player === defencePlayer) 
             return this.gameOver(player);
@@ -277,11 +272,11 @@ module.exports = class Game {
         //атака player'ом defencePlayer'а
         {
             const playerCardsGenerator = this.waitCards(player);
-            setTimeout(() => playerCardsGenerator.next('0'), 15000);
+            setTimeout(() => playerCardsGenerator.next(true), 15000);
     
             for (let card of playerCardsGenerator) {
                 card = await card;
-                if (typeof card === 'string') { //timeout
+                if (card === Symbol.for('break')) { //timeout
                     player.cards.splice(card, 1);
                     allAttackCards.push(card);
                     this.playerAttackBroadcast(player, card);
@@ -298,56 +293,42 @@ module.exports = class Game {
                 this.playerAttackBroadcast(player, card);
                 
                 //больше нечего подкидывать/отбивающемуся больше нечем отбиваться
-                if (!player.cards.some(pcard => card.name === pcard.name) || defencePlayer.cards.length < 2) {
-                    playerCardsGenerator.next(true); break;
-                }
+                if (!player.cards.some(pcard => card.name === pcard.name) || defencePlayer.cards.length < 2) 
+                    playerCardsGenerator.next(true);
             }
         }
         
         //оборона
         {
-            
-        }
+            //невозможно побиться, берёт
+            if (this.isBito(allAttackCards, player.cards) < allAttackCards.length) {
+                await this.waitAllAdditionCards([attackPlayer], defencePlayer, allAttackCards, allDefenceCards);
+                await this.waitAllAdditionCards(this.players.filter(user => ![attackPlayer, defencePlayer].includes(user)), defencePlayer, allAttackCards, allDefenceCards);
+                this.playerTakeBroadcast(player, allAttackCards.concat(allDefenceCards));
+                return this.gameLoop(this.getNextPlayer(defencePlayerIndex)[1]);
+            } else {
 
-        await new Promise(resolve => {
-            let timer = null;
+            }
+
+            const defencePlayerCardsGenerator = this.waitCards(defencePlayer);
+            setTimeout(() => playerCardsGenerator.next(true), 15000);
             let bitoCards = 0;
 
-            const handler = message => {
-                message = JSON.parse(message);
-                if (!['attack', 'take'].includes(message.event)) return;
-
-                //невозможно побиться
-                if (this.isBito(allAttackCards, player.cards) < allAttackCards.length) {
+            for (let card of defencePlayerCardsGenerator) {
+                card = await card;
+                if (card === Symbol.for('break')) { 
                     //беру
-                    this.waitAllAdditionCards(defencePlayer, player, allAttackCards, allDefenceCards);
+                    break; 
                 }
 
-                const cardIndex = player.cards.findIndex(card => card.suit === message.card.suit && card.name === message.card.name);
-                if (!~card) return;
-                const card = player.cards[cardIndex];
                 const newBito = this.isBito(allAttackCards, [card]);
                 if (newBito < bitoCards) return; //положил неподходящую карту
 
-                if (!message.data && allAttackCards.length) { // игрок не захотел подкидывать дальше. приходит !data
-                    clearTimeout(timer);
-                    player.socket.removeListener('message', handler);
-                    resove();
-                }
             }
 
-            defencePlayer.socket.on('message', handler);
+            
+        }
 
-            timer = setTimeout(() => { //берёт. ждать attack от всех игроков. прервать после пасов или оверфлов шести карт
-                //ждать
-                this.playerTakeBroadcast(player, allAttackCards.concat(allDefenceCards));
-
-                resolve();
-                player.socket.removeListener('message', handler);
-            }, 15000);
-        })
-
-        
 
         this.gameLoop(getOverflowIndex(currentPlayerIndex + 1, this.players.length))
     }

@@ -4,7 +4,7 @@
 
     function *waitCards(player) {
         const handler = message => {
-            resolves.pop()(message);
+            (resolves.pop() || (()=>{}))(message);
             rejects.pop();
         }
 
@@ -17,7 +17,7 @@
         }))) {};
     
         player.removeEventListener('message', handler);
-        resolves.forEach(res => res(result));
+        resolves.forEach(res => res(Symbol.for('break')));
         return result;
     } 
 
@@ -28,21 +28,22 @@
     // generator.throw();
     //generator.throw();
 
-    /*(async function () {
-        for (let card of generator) {
-            card = await card.catch(e => console.log('e',e));
-            const a = generator.throw();
-            console.log('gen', card);
-        }
-    })().catch(e => {
-        debugger
-    });*/
+    
+    
+    // })().catch(e => {
+    //     debugger
+    // });
 
     
-    // 
-    //     for await (let val of generator) 
-    //         console.log('gen', val);
-    // })();
+    (async function () {
+        for (let card of generator) {
+            card = await card;
+            console.log('c', card);
+            generator.next(true);
+        }
+        // for await (let val of generator) 
+        //     console.log('gen', val);
+    })();
 
     //ee.dispatchEvent(new Event("message"));
     //generator.throw()
