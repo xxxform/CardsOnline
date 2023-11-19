@@ -25,6 +25,7 @@ module.exports = class Game {
         this.deck = []; //колода
         this.started = false;
         this.trump = ''; // ♠ ♥ ♣ ♦   ♤ ♡ ♧ ♢
+        this.id = Date.now();
     }
     
     //событие выбора козыря обязательно
@@ -34,12 +35,26 @@ module.exports = class Game {
         user.cards = [];
         user.ready = false;
         this.players.push(user);
-
+        
         for (const user of this.players) {
-            user.socket.send(JSON.stringify({event: 'addUser', data: {name: user.name, ready: false}})); 
+            user.socket.send(JSON.stringify({
+                event: 'addUser', data: {name: user.name, ready: user.ready}
+            })); 
+        }
+    }
+
+    leave(user) {
+        this.players.splice(this.players.indexOf(user), 1);
+
+        for (const userTo of this.players) {
+            if (user !== userTo)
+                userTo.socket.send(JSON.stringify({
+                    event: 'remUser', data: {name: user.name}
+                })); 
         }
 
-        //this.sendState(user);
+        if (this.started) 
+            this.gameOver(user);
     }
 
     async start() {
@@ -390,8 +405,8 @@ module.exports = class Game {
     changeStatus(user) {
         user.ready = !!(this.playersReady += (!user.ready || -1));
 
-        for (const user of this.players) {
-            user.socket.send(JSON.stringify({event: 'changeField', data: {
+        for (const userTo of this.players) {
+            userTo.socket.send(JSON.stringify({event: 'changeStatus', data: {
                 type: 'player',
                 name: user.name,
                 ready: user.ready

@@ -19,34 +19,6 @@ app.use(cookieParser('issecret'));
 const usersOnServer = [];
 const rooms = [];
 
-
-
-app.get('/auth', (req, res) => {
-    if (req.cookies.username) { res.send('авторизовано'); return}
-    if (req.query.username) {
-        const existedUser = usersOnServer.find(user => user.name === req.query.username);
-        if (existedUser || req.query.username[0] === '_') {
-            res.status(400).send('Введите другое имя');
-            return;
-        }
-        usersOnServer.push({username: req.query.username, socket: null, room: null});
-        res.cookie('username', req.query.username);
-        res.send('OK');
-    } else {
-        res.send('Укажите имя');
-    }
-});
-
-app.get('/rooms', (req, res) => {
-    if (!req.cookies.username) {res.status(401).send('не авторизовано'); return}
-
-    res.json(rooms.map((room, index) => ({
-        index, 
-        user: room.players[0].name, 
-        password: room.password ? true : false
-    })))
-});
-
 app.get('/leave', (req, res) => {
     if (!req.cookies.username) {res.status(401).send('не авторизовано'); return}
     const room = rooms[req.query.roomId] || rooms.find(room => room.players.includes(req.cookies.username));
@@ -57,62 +29,104 @@ app.get('/leave', (req, res) => {
     res.send('OK');
 });
 
-app.get('/createRoom', (req, res) => {
-    if (!req.cookies.username) {res.status(401).send('не авторизовано'); return}
-
-    const room = rooms[rooms.push(new Game(
-        
-    )) - 1];
-
-    if (req.query.password?.length > 0) room.password = req.query.password
-
-    res.send(rooms.length - 1);
-});
-
-app.get('/join', (req, res) => {
-    if (!req.cookies.username) {res.status(401).send('не авторизовано'); return}
-    if (!req.query.roomId) {res.status(400).send('укажите id комнаты'); return}
-
-    const user = usersOnServer.find(user => user.username === req.query.username);
-    const room = rooms[req.query.roomId];
-    if (!room) {res.status(404).send('комната не найдена'); return}
-    if (room.password && room.password !== req.query.password) {res.status(403).send('неверный пароль'); return}
-    if (room.players.length > 5) {res.status(406).send('комната заполнена'); return}
-
-    res.send(req.query.roomId);
-    room.join(user);
-    
-    //клиент после получение ответа перенаправляется на роут /game?roomId=id
-});
-
 WebSocketServer.on('connection', ws => {
-    const user = { username: '', socket: null, room: null }; 
+    const user = { name: '', socket: null, room: null }; 
     //те у кого room null находятся в лобби. Посылать им обновление кол-ва игроков в комнатах
 
     ws.on('message', message => {
         message = JSON.parse(message);
-        if (!message?.event){ws.send(JSON.stringify({event: 'error', data: 'event обязателен'})); return}
+        if (!message?.event) { 
+            ws.send(JSON.stringify({event: 'error', data: 'event обязателен'}));
+            return;
+        }
 
-        if (!user.socket && message.event === 'auth') {
-            if (!username || !usersOnServer.includes(message.username)) {ws.send(JSON.stringify({event: 'error', data: 'имя пользователя обязательно'})); return}
+        if (!user.socket && message.event === 'auth' && message.username) {
+            if (!usersOnServer.find(({name}) => name === message.username)) { 
+                ws.send(JSON.stringify({event: 'error', data: 'Имя занято'}));
+                return;
+            }
             user.username = message.username;
             user.socket = ws;
-            // todo поиск комнаты в которой юзер был до потери связи
+            usersOnServer.push(user);
+
+            return ws.send(JSON.stringify({event: 'auth', data: 'ok'})); // todo поиск комнаты в которой юзер был до потери связи
         }
+
         if (!user.socket) return;
+
+        ///////////////////////////////////////////////////////////////////////////
+
+        if (message.event === 'roomList') {
+            for (let room of rooms) { //присылаем список комнат
+                ws.send(JSON.stringify({event: 'createRoom', data: {
+                    id: room.id, 
+                    user: room.players[0].name, 
+                    password: room.password ? true : false
+                }}));
+            }
+        }
+
+        if (message.event === 'createRoom') {
+            const room = rooms[rooms.push(new Game()) - 1];
+            if (message.password?.length > 0) 
+                room.password = message.password;
+            
+            for (let userTo of usersOnServer) 
+                userTo.send(JSON.stringify({event: 'createRoom', data: user === userTo ? room.id : {
+                    id: room.id, 
+                    user: user.name, 
+                    password: room.password ? true : false
+                }}));
+                
+            ws.send(JSON.stringify({event: 'joinRoom', data: room.id})); //клиент перенаправляется в комнату
+            user.room = room;
+            return room.join(user);
+        }
+
+        if (message.event === 'join') {
+            if (message.roomId) { 
+                ws.send(JSON.stringify({event: 'error', data: 'укажите id комнаты'}));
+                return;
+            }
+
+            const room = rooms[message.roomId];
+            if (!room) {
+                ws.send(JSON.stringify({event: 'error', data: 'комната не найдена'}));
+                return;
+            }
+            if (room.password && room.password !== req.query.password) {
+                ws.send(JSON.stringify({event: 'error', data: 'неверный пароль'}));
+                return;
+            }
+            if (room.players.length > 5) {
+                ws.send(JSON.stringify({event: 'error', data: 'комната заполнена'}));
+                return;
+            }
+
+            ws.send(JSON.stringify({event: 'joinRoom', data: room.id}));
+            user.room = room;
+            return room.join(user); //клиент после получение ответа перенаправляется на роут /game?roomId=id
+        }
  
         if (message.event === 'ready') {
-            user.room
+            user.room.changeStatus(user);
+            return;
         }
         if (message.event === 'leave') {
+            user.room.leave(user);
+            user.room = null;
+        } 
 
-        } else 
         if (message.event === 'message') {
 
         }
     });
     
     ws.on('close', message => {
+        usersOnServer.splice(usersOnServer.indexOf(user), 1);
+        user.room.leave(user);
+        //поиск комнат где есть юзер, дать событие room.disconnect(user);
+
         if (message.wasClean) {
             alert(`[close] Соединение закрыто чисто, код=${message.code} причина=${message.reason}`);
           } else {

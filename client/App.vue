@@ -3,6 +3,8 @@
 </template>
 
 <script>
+    import modalAuth from './modalAuth.vue';
+
     (async () => {
         const login = await fetch('/auth?username=xxxForm');
 
@@ -26,6 +28,14 @@
             console.log(event)
         }
     })();
+
+    export default {
+        components: {
+            modalAuth
+        }
+    }
+
+    
 </script>
 
 <style>
