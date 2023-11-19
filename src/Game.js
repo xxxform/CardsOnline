@@ -98,7 +98,7 @@ module.exports = class Game {
             this.changeStatus(player);
         }
         
-        this.gameLoop(firstPlayerIndex, true);
+        this.gameLoop(firstPlayerIndex === null ? getRandomInt(0, this.players.length - 1) : firstPlayerIndex, true);
     }
 
     get countOfPlayersInGame() {
@@ -194,13 +194,14 @@ module.exports = class Game {
         const playerGenerators = [];
         setTimeout(() => playerGenerators.forEach(gen => gen.next(true)), 15000);
         const checkDefencePlayerOverflow = () => allAttackCards.length >= 6 || allAttackCards.length >= defencePlayer.cards.length + allDefenceCards.length;
+        let lastCard = null;
 
         for (let playerAdd of playersCanAdd) {
             const playerCardsGenerator = this.waitCards(player);
             playerGenerators.push(playerCardsGenerator);
 
             for (let card of playerCardsGenerator) {
-                card = await card;
+                lastCard = card = await card;
                 if (card === Symbol.for('break')) break;
                 if (!card) { playerCardsGenerator.next(true); break }
 
@@ -218,6 +219,8 @@ module.exports = class Game {
                     playerCardsGenerator.next(true);
             }
         }
+
+        return lastCard;
     }
 
     /*
@@ -300,37 +303,65 @@ module.exports = class Game {
         
         //оборона
         {
-            //невозможно побиться, берёт
-            if (this.isBito(allAttackCards, player.cards) < allAttackCards.length) {
+            const defencePlayerCardsGenerator = this.waitCards(defencePlayer);
+            let timer = setTimeout(() => playerCardsGenerator.next(true), 15000);
+            let bitoCards = 0;
+            let playerTake = false;
+            let attackPlayerIsAttack = true;
+
+            outer: while(!playerTake) {   //нечем биться, берёт
+                if (this.isBito(allAttackCards, defencePlayer.cards) < allAttackCards.length) {
+                    playerTake = true;
+                    break;
+                }
+
+                for (let card of defencePlayerCardsGenerator) {
+                    card = await card;
+                    if (!card || card === Symbol.for('break')) { //берёт
+                        playerTake = true;
+                        break outer; 
+                    }
+    
+                    const newBito = this.isBito(allAttackCards, [card]);
+                    if (newBito < bitoCards) continue; //положил неподходящую карту
+                    bitoCards = newBito;
+
+                    defencePlayer.cards.splice(defencePlayer.cards.indexOf(card), 1);
+                    allDefenceCards.push(card);
+                    this.playerAttackBroadcast(defencePlayer, card);
+
+                    clearTimeout(timer);
+                    timer = setTimeout(() => playerCardsGenerator.next(true), 15000);
+                    if (allAttackCards.length > allDefenceCards.length) {
+
+                    }
+                }
+
+                if (attackPlayerIsAttack) {
+                    const lastCard = await this.waitAllAdditionCards([attackPlayer], defencePlayer, allAttackCards, allDefenceCards);
+                    if (!lastCard) attackPlayerIsAttack = false;
+                    await this.waitAllAdditionCards(this.players.filter(user => ![attackPlayer, defencePlayer].includes(user)), defencePlayer, allAttackCards, allDefenceCards);
+                } else {
+                    await this.waitAllAdditionCards(this.players.filter(user => defencePlayer !== user), defencePlayer, allAttackCards, allDefenceCards);
+                }
+            }  
+
+            defencePlayerCardsGenerator.next(true);
+
+            //раздать карты из колоды кому надо
+
+            if (playerTake) {
+                this.changeStatus(defencePlayer);
+                this.changeStatus(defencePlayer);
                 await this.waitAllAdditionCards([attackPlayer], defencePlayer, allAttackCards, allDefenceCards);
                 await this.waitAllAdditionCards(this.players.filter(user => ![attackPlayer, defencePlayer].includes(user)), defencePlayer, allAttackCards, allDefenceCards);
                 this.playerTakeBroadcast(player, allAttackCards.concat(allDefenceCards));
+                
                 return this.gameLoop(this.getNextPlayer(defencePlayerIndex)[1]);
             } else {
-
+                return this.gameLoop(this.getNextPlayer(player)[1]);
             }
-
-            const defencePlayerCardsGenerator = this.waitCards(defencePlayer);
-            setTimeout(() => playerCardsGenerator.next(true), 15000);
-            let bitoCards = 0;
-
-            for (let card of defencePlayerCardsGenerator) {
-                card = await card;
-                if (card === Symbol.for('break')) { 
-                    //беру
-                    break; 
-                }
-
-                const newBito = this.isBito(allAttackCards, [card]);
-                if (newBito < bitoCards) return; //положил неподходящую карту
-
-            }
-
-            
         }
-
-
-        this.gameLoop(getOverflowIndex(currentPlayerIndex + 1, this.players.length))
     }
 
     moveCard(from, to, fromUser, toUser) {
