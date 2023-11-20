@@ -36,9 +36,15 @@ module.exports = class Game {
         user.ready = false;
         this.players.push(user);
         
-        for (const user of this.players) {
+        for (const userTo of this.players) {
+            if (user !== userTo)
+                userTo.socket.send(JSON.stringify({
+                    event: 'addUser', data: {name: user.name, ready: user.ready}
+                })); 
+        }
+        for (const userTo of this.players) {
             user.socket.send(JSON.stringify({
-                event: 'addUser', data: {name: user.name, ready: user.ready}
+                event: 'addUser', data: {name: userTo.name, ready: userTo.ready}
             })); 
         }
     }

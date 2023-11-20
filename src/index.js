@@ -19,33 +19,26 @@ app.use(cookieParser('issecret'));
 const usersOnServer = [];
 const rooms = [];
 
-app.get('/leave', (req, res) => {
-    if (!req.cookies.username) {res.status(401).send('не авторизовано'); return}
-    const room = rooms[req.query.roomId] || rooms.find(room => room.players.includes(req.cookies.username));
-    if (!room) {res.status(404).send('комната не найдена'); return}
-    const userIndex = room.users.indexOf(req.cookies.username);
-    if (userIndex === -1) {res.status(404).send('пользователь не найден'); return}
-    room.users.splice(userIndex, 1);
-    res.send('OK');
-});
-
 WebSocketServer.on('connection', ws => {
     const user = { name: '', socket: null, room: null }; 
     //те у кого room null находятся в лобби. Посылать им обновление кол-ва игроков в комнатах
 
     ws.on('message', message => {
         message = JSON.parse(message);
+
+        console.log(message);
+
         if (!message?.event) { 
             ws.send(JSON.stringify({event: 'error', data: 'event обязателен'}));
             return;
         }
 
         if (!user.socket && message.event === 'auth' && message.username) {
-            if (!usersOnServer.find(({name}) => name === message.username)) { 
+            if (usersOnServer.find(({name}) => name === message.username)) { 
                 ws.send(JSON.stringify({event: 'error', data: 'Имя занято'}));
                 return;
             }
-            user.username = message.username;
+            user.name = message.username;
             user.socket = ws;
             usersOnServer.push(user);
 
@@ -61,7 +54,9 @@ WebSocketServer.on('connection', ws => {
                 ws.send(JSON.stringify({event: 'createRoom', data: {
                     id: room.id, 
                     user: room.players[0].name, 
-                    password: room.password ? true : false
+                    password: room.password ? true : false,
+                    capacity: room.players.length,
+                    started: room.started
                 }}));
             }
         }
@@ -72,10 +67,12 @@ WebSocketServer.on('connection', ws => {
                 room.password = message.password;
             
             for (let userTo of usersOnServer) 
-                userTo.send(JSON.stringify({event: 'createRoom', data: user === userTo ? room.id : {
+                userTo.socket.send(JSON.stringify({event: 'createRoom', data: {
                     id: room.id, 
                     user: user.name, 
-                    password: room.password ? true : false
+                    password: room.password ? true : false,
+                    capacity: 1,
+                    started: room.started
                 }}));
                 
             ws.send(JSON.stringify({event: 'joinRoom', data: room.id})); //клиент перенаправляется в комнату
@@ -94,7 +91,11 @@ WebSocketServer.on('connection', ws => {
                 ws.send(JSON.stringify({event: 'error', data: 'комната не найдена'}));
                 return;
             }
-            if (room.password && room.password !== req.query.password) {
+            if (room.started) {
+                ws.send(JSON.stringify({event: 'error', data: 'игра уже идёт'}));
+                return;
+            }
+            if (room.password && room.password !== message.password) {
                 ws.send(JSON.stringify({event: 'error', data: 'неверный пароль'}));
                 return;
             }
@@ -113,8 +114,13 @@ WebSocketServer.on('connection', ws => {
             return;
         }
         if (message.event === 'leave') {
-            user.room.leave(user);
-            user.room = null;
+            if (user.room) {
+                user.room.leave(user);
+                if (!user.room.players.length) { 
+                    rooms.splice(rooms.indexOf(user.room), 1);
+                }
+                user.room = null;
+            }
         } 
 
         if (message.event === 'message') {
@@ -123,10 +129,22 @@ WebSocketServer.on('connection', ws => {
     });
     
     ws.on('close', message => {
-        usersOnServer.splice(usersOnServer.indexOf(user), 1);
-        user.room.leave(user);
+        const index = usersOnServer.indexOf(user);
+
+        if (~index)
+            usersOnServer.splice(index, 1);
+
+        if (user.room) {
+            user.room.leave(user);
+            if (!user.room.players.length) { 
+                rooms.splice(rooms.indexOf(user.room), 1);
+            }
+        }
+    });
+
         //поиск комнат где есть юзер, дать событие room.disconnect(user);
 
+        /*
         if (message.wasClean) {
             alert(`[close] Соединение закрыто чисто, код=${message.code} причина=${message.reason}`);
           } else {
@@ -139,8 +157,8 @@ WebSocketServer.on('connection', ws => {
             // обычно в этом случае event.code 1006
             //alert('[close] Соединение прервано');
 
-          } 
-    });
+          } */
+    
 })
 
 

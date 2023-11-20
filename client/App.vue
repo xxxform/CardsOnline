@@ -1,37 +1,42 @@
 <template>
-    Cards
+    <modal-auth v-if="socket && !userName" :socket="socket" v-model="userName"/>
+    <room-list v-if="userName && !room" :socket="socket" v-model="room"/>
+    <game v-if="room" :socket="socket" :user="userName" v-model="room"/>
 </template>
 
 <script>
     import modalAuth from './modalAuth.vue';
-
-    (async () => {
-        const login = await fetch('/auth?username=xxxForm');
-
-        let socket = new WebSocket("ws://localhost:5000");
-
-        await new Promise(res => {
-            socket.onopen = event => {
-                console.log(event);
-                res();
-            }
-        });
-
-        socket.onmessage = event => {
-            console.log(event)
-        }
-
-        socket.send(JSON.stringify({event: 'auth', username: 'xxxForm'}));
-
-        
-        socket.onclose = event => {
-            console.log(event)
-        }
-    })();
+    import roomList from './roomList.vue';
+    import game from './game.vue';
 
     export default {
         components: {
-            modalAuth
+            modalAuth, roomList, game
+        },
+        data() {
+            return {
+                userName: '',
+                socket: null,
+                room: null
+            }
+        },
+        async mounted() {
+            let socket = new WebSocket("ws://192.168.0.172:5000");
+
+            await new Promise(res => {
+                socket.onopen = event => {
+                    res();
+                }
+            });
+
+            this.socket = socket;
+
+            socket.onclose = event => {
+                console.error(event)
+            }
+        },
+        methods: {
+
         }
     }
 
