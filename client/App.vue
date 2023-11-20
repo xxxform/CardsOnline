@@ -1,7 +1,7 @@
 <template>
     <modal-auth v-if="socket && !userName" :socket="socket" v-model="userName"/>
     <room-list v-if="userName && !room" :socket="socket" v-model="room"/>
-    <game v-if="room" :socket="socket" :user="userName" v-model="room"/>
+    <game v-if="room" :socket="socket" :username="userName" v-model="room"/>
 </template>
 
 <script>

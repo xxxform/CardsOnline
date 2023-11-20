@@ -81,12 +81,12 @@ WebSocketServer.on('connection', ws => {
         }
 
         if (message.event === 'join') {
-            if (message.roomId) { 
+            if (!message.roomId) { 
                 ws.send(JSON.stringify({event: 'error', data: 'укажите id комнаты'}));
                 return;
             }
 
-            const room = rooms[message.roomId];
+            const room = rooms.find(room => room.id === message.roomId);
             if (!room) {
                 ws.send(JSON.stringify({event: 'error', data: 'комната не найдена'}));
                 return;

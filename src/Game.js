@@ -66,7 +66,7 @@ module.exports = class Game {
     async start() {
         this.deck = this.getRandomCards();
         this.trump = this.deck[0].suit;
-        let lowerTrump = '00';
+        let lowerTrump = '0';
         let firstPlayerIndex = null;
 
         for (let i = 0; i < this.players.length; i++) {
@@ -363,6 +363,17 @@ module.exports = class Game {
                 await this.waitAllAdditionCards(this.players.filter(user => ![/*attackPlayer,*/ defencePlayer].includes(user)), defencePlayer, allAttackCards, allDefenceCards);
                 this.playerTakeBroadcast(defencePlayer, allAttackCards.concat(allDefenceCards));
                 defencePlayer.cards.push(...allAttackCards, ...allDefenceCards);
+            } else {
+                this.dump.push(...allAttackCards, ...allDefenceCards);
+
+                for (const playerTo of this.players) {
+                    playerTo.socket.send(JSON.stringify({event: 'remCard', data: {
+                        type: 'desc', card: allAttackCards.length + allDefenceCards.length
+                    }}));
+                    playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
+                        type: 'dump', card: allAttackCards.length + allDefenceCards.length
+                    }}));
+                }
             }
 
             // раздать 
@@ -377,13 +388,19 @@ module.exports = class Game {
                 if (this.deck.length - cardsToAdd < 0) cardsToAdd = this.deck.length;
 
                 if (cardsToAdd > 0)
-                    for (const playerTo of this.players) 
+                    for (const playerTo of this.players) {
+                        player.socket.send(JSON.stringify({event: 'remCard', data: {
+                            type: 'deck',
+                            card: cardsToAdd
+                        }}));
+
                         if (playerTo !== player)
                             playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
                                 type: 'player',
                                 name: player.name,
                                 card: cardsToAdd
                             }}));
+                    }
 
                 while (cardsToAdd-- > 0) {
                     const card = this.deck.pop();

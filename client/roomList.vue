@@ -34,7 +34,7 @@ export default {
             return;
         },
         join(room) {
-            const message = {event: 'join'};
+            const message = {event: 'join', roomId: room.id};
             if (room.password) {
                 let password = prompt('Введите пароль');
                 Object.assign(message, {password});
@@ -62,6 +62,7 @@ export default {
         this.socket.send(JSON.stringify({event: 'roomList'}));
     },
     unmounted() {
+        this.rooms = null;
         this.socket.removeEventListener('message', this.handler);
     }
 }
