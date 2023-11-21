@@ -2,31 +2,53 @@
     <div class="gameWrapper">
         <button class="buttonLeave" @click="leaveGame">Выйти</button>
         <div class="circleOfPlayers">
-            <span class="playerField" v-for="(user, i) in users" :style="{transform: `rotate(${360 / users.length * i }deg)`}" :class="{'me': user.name === username}">
-                <p class="userName" :style="{transform: `rotate(${180}deg)`}">{{ user.name }}</p>
+            <span class="playerField" v-for="(user, i) in users" :class="{'me': user.name === username}">
+                <button @click="action" v-if="user.name === username" class="action" v-show="!started || user.ready">{{ !started ? 'Готов' : user.defence ? 'Беру' : 'Пас' }}</button>
+                <p class="userName" :class="{'ready': user.ready}" >{{ user.name }} {{ user.defence ? '🛡' : '' }}</p>
                 <p class="cards">
-                    <span v-for="(card, i) in user.cards">
+                    <span @click="user.name === username ? step(card) : null" v-for="(card, i) in user.cards">
                         <span class="card" :class="{'hidden': !card.suit}">
                             <template v-if="card.suit">
-                                <span class="nameUp">{{ card.suit }} <br> {{ card.name }}</span>
-                                <span class="nameDown">{{ card.name }} <br> {{ card.suit }}</span>
+                                <span class="nameUp">{{ card.name }} <br>  {{ card.suit }} </span>
+                                <span class="nameDown">{{ card.name }}<br> {{ card.suit }}</span>
                             </template>
                         </span>
                     </span>
                 </p>
             </span>
         </div>
+        <div class="fields">
+            <div class="deck">
+                <div class="trump">{{ trump }}</div>
+                <div class="cards">
+                    <span v-for="(card, i) in deck">
+                        <span class="card"></span>
+                    </span>
+                </div>
+            </div>
+            <div class="desk">
+
+            </div>
+            <div class="dump">
+
+            </div>
+        </div>
     </div>
 </template>
 
 <script>
+//самый нижний элемент(последний добавленный append) карты в дом дереве колоды будет самым верхним по z-index
+//поэтому в массив нужно делать unshift
 //todo сделать при ховере z-index или при нажатии / touchmove чтобы можно было кидать карту
 export default {
     data() {
         return {
             users: [],
-            deck: [],
-            desk: [],
+            deck: [{},{},{},{}],
+            desk: [{},{},{},{}],
+            dump: [{},{},{},{}],
+            trump: null,
+            started: false
         }
     },
     props: {
@@ -38,6 +60,15 @@ export default {
         leaveGame() {
             this.socket.send(JSON.stringify({event: 'leave'}));
             this.$emit('update:modelValue', null); 
+        },
+        action() {
+            this.socket.send(JSON.stringify({event: !this.started ? 'ready' : 'step'}));
+        },
+        step(card) {
+            this.socket.send(JSON.stringify({event: 'step', card: {
+                suit: card.suit,
+                name: card.name
+            }}));
         },
         handler(event) {
             const message = JSON.parse(event.data);
@@ -60,16 +91,54 @@ export default {
             if (message.event === 'addUser') {
                 message.data.cards = cards;
                 this.users.push(message.data);
-                this.users.push(...users)
-            }
+            } else
             if (message.event === 'remUser') {
                 this.users.splice(this.users.findIndex(user => user.name === message.data.name), 1);
-            }
+            } else
             if (message.event === 'addCard') {
-                if (message.data.type) {}
-            }
-            if (message.event === 'remCard') {
+                const cards = message.data.type === 'player' 
+                    ? this.users.find(({name}) => name === message.data.name)
+                    : this[message.event.type];
 
+                cards.push(message.data.card.suit ? message.data.card 
+                    : (new Array(message.data.card)).fill({}));
+            } else
+            if (message.event === 'remCard') {
+                const cards = message.data.type === 'player' 
+                    ? this.users.find(({name}) => name === message.data.name)
+                    : this[message.event.type];
+
+                if (message.data.card.suit) 
+                    cards.splice(cards.findIndex(({name, suit}) =>
+                        name === message.data.card.name && suit === message.data.card.suit), 1);
+                else 
+                    cards.splice(cards.length - 1 - message.data.card, message.data.card);
+
+            } else
+            if (message.event === 'changeStatus') {
+                const user = this.users.find(user => user.name === message.data.name);
+                user.ready = message.data.ready;
+                if (this.started && user.ready && user.name === this.username) {
+                    alert('Ваш ход!');
+                }
+            } else
+            if (message.event === 'info') {
+                if (message.data.type === 'defencePlayer') {
+                    const prevDefencePlayer = this.users.find(user => user.defence);
+                    if (prevDefencePlayer) prevDefencePlayer.defence = false;
+                    const user = this.users.find(user => user.name === message.data.name);
+                    user.defence = true;
+                } else
+                if (message.data.type === 'gameStatus') {
+                    if (this.started = message.data.started) {
+                        alert('Игра началась!');
+                    } else {
+                        alert(`Игра окончена! ${message.data.fool ? message.data.fool + ' проиграл!' : 'Ничья!'}`);
+                    }
+                }
+            } else 
+            if (message.event === 'setTrump') {
+                this.trump = message.event.data;
             }
         }
     },
@@ -83,9 +152,48 @@ export default {
 </script>
 
 <style scoped>
+    .fields {
+        z-index: -3;
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
 
-    .playerField.me {
-        z-index: 1;
+        > .desk {
+            width: 60vw;
+            height: 40vh;
+        }
+
+        > .dump {
+            width: 15vw;
+            height: 40vh;
+        }
+        
+        > .deck {
+            width: 15vw;
+            height: 30vh;
+            position: relative;
+            .trump {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                font-size: 5em;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .cards > span {
+                width: 0;
+                height: 0;
+            }
+            .cards > span:first-child > .card {
+                transform: rotate(90deg);
+            }
+        }
     }
     .circleOfPlayers {
         position: absolute;
@@ -95,39 +203,55 @@ export default {
         right: 0;
         display: flex;
         justify-content: center;
+        height: 30vh;
         /* align-items: center; */
         /* text-align: center; */
-        transform: rotate(180deg);
 
         .playerField {
-            position: fixed;
+            position: relative;
             width: 30vw;
-            height: 23vh;
+            height: 20vh;
             background-color: grey;
             display: inline-block;
-            transform-origin: center calc(100vh/2);
             white-space: nowrap;
 
-            @media (max-width: 800px) {
-                transform-origin: center calc(100vh/3);
-            } 
-            @media (max-width: 800px) {
-                transform-origin: center calc(100vh/3);
-            } 
-            @media (max-height: 800px) {
-                transform-origin: center calc(100vh/3);
-            } 
-
             .userName{
+                margin: 0;
                 text-align: center;
+                position: absolute;
+                font-size: 1.5em;
+                width: 100%;
             }
+        }
+    }
 
-            
+    .gameWrapper > .circleOfPlayers > .playerField.me {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        height: 30vh;
+        .cards {
+            display: flex;
+            justify-content: center;
+            margin: 0;
+            height: 100%;
+            > span {
+                width: inherit;
+                position: relative;
+                > .card {
+                    position: relative;
+                    min-width: inherit;
+                }
+            }
+        }
+        .userName {
+            z-index: 2;
+            position: relative;
+            margin: 0;
         }
     }
 
     .cards {
-        direction: rtl;
         > span {
             width: 10%;
             display: inline-block;
@@ -138,11 +262,12 @@ export default {
             > .card {
                 position: absolute;
                 aspect-ratio: 2/3;
-                min-width: 50%;
+                min-width: 20%;
+                height: 100%;
                 display: inline-block;
                 border: 1px solid black;
                 background-color: white;
-                font-size: 2vw;
+                font-size: 2vh;
 
                 .nameUp {
                     position: absolute;
@@ -164,6 +289,18 @@ export default {
     
     .buttonLeave {
         position: absolute;
-        z-index: 1;
+        z-index: 5;
+    }
+
+    button.action {
+        position: absolute;
+        text-align: center;
+        top: -5vh;
+        left: 40vw;
+        right: 40vw;
+        font-size: 2em;
+    }
+    .ready {
+        background-color: green;
     }
 </style>

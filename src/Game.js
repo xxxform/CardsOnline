@@ -117,6 +117,11 @@ module.exports = class Game {
             player.socket.send(JSON.stringify({event: 'setTrump', data: this.trump}));
 
             this.changeStatus(player);
+
+            player.socket.send(JSON.stringify({event: 'info', data: {
+                type: 'gameStatus',
+                started: true
+            }}));
         }
         
         this.gameLoop(firstPlayerIndex === null ? getRandomInt(0, this.players.length - 1) : firstPlayerIndex, true);
@@ -139,9 +144,11 @@ module.exports = class Game {
 
     gameOver(player) {
         for (const playerTo of this.players) {
-            playerTo.socket.send(JSON.stringify({event: 'gameOver', data: {
+            playerTo.socket.send(JSON.stringify({event: 'info', data: {
+                type: 'gameStatus',
+                started: false,
                 fool: !this.countOfPlayersInGame ? '' : player.name
-            }})); 
+            }}));
         }
     }
 
@@ -284,6 +291,12 @@ module.exports = class Game {
         if (player === defencePlayer) 
             return this.gameOver(player);
 
+        for (const userTo of this.players) 
+            userTo.socket.send(JSON.stringify({event: 'info', data: {
+                type: 'defencePlayer',
+                name: defencePlayer.name
+            }}));
+        
         const allAttackCards = []; // max length 6 
         const allDefenceCards = [];
 
@@ -436,7 +449,7 @@ module.exports = class Game {
             }}));
         }
 
-        if (!this.started && this.playersReady === this.players.length) {
+        if (!this.started && this.playersReady === this.players.length && this.playersReady > 1) {
             this.started = true;
             this.start();
         }
