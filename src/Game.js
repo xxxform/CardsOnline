@@ -21,7 +21,7 @@ module.exports = class Game {
         this.players = [];
         this.playersReady = 0;
         this.dump = []; //сброс
-        this.desc = []; //стол
+        this.desk = []; //стол
         this.deck = []; //колода
         this.started = false;
         this.trump = ''; // ♠ ♥ ♣ ♦   ♤ ♡ ♧ ♢
@@ -72,7 +72,7 @@ module.exports = class Game {
         for (let i = 0; i < this.players.length; i++) {
             const player = this.players[i];
 
-            for (let i = 0; i < 6; i++) {
+            for (let j = 0; j < 6; j++) {
                 const card = this.deck.pop();
 
                 if (card.suit === this.trump 
@@ -133,13 +133,14 @@ module.exports = class Game {
 
     getNextPlayer(currentPlayerIndex) {
         const player = this.players[getOverflowIndex(currentPlayerIndex, this.players.length)];
-        let nextPlayer = this.players[getOverflowIndex(++currentPlayerIndex, this.players.length)];
+        let nextPlayer;
 
-        while(player !== nextPlayer || !nextPlayer?.length) {
+        while(player !== nextPlayer) {
+            if (nextPlayer?.cards?.length) break;
             nextPlayer = this.players[getOverflowIndex(++currentPlayerIndex, this.players.length)]
         }
 
-        return [nextPlayer, currentPlayerIndex];
+        return [nextPlayer, getOverflowIndex(currentPlayerIndex, this.players.length)];
     }
 
     gameOver(player) {
@@ -160,34 +161,32 @@ module.exports = class Game {
                 card: playerTo === player ? card : 1
             }})); 
 
-            player.socket.send(JSON.stringify({event: 'addCard', data: {
-                type: 'desc', card
+            playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
+                type: 'desk', card
             }})); 
         }
     }
 
     playerTakeBroadcast(player, cards) {
-        for (const playerTo of this.players) {
-            playerTo.socket.send(JSON.stringify({event: 'remCard', data: {
-                type: 'desc', card: cards.length
-            }})); 
-
-            if (player === playerTo) {
-                for (const card of player.cards) {
-                    playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
-                        type: 'player',
-                        name: player.name,
-                        card: card
-                    }})); 
-                }
-                return;
-            } 
-
-            playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
+        for (const card of cards) {
+            player.socket.send(JSON.stringify({event: 'addCard', data: {
                 type: 'player',
                 name: player.name,
-                card: cards.length
+                card: card
             }})); 
+        }
+
+        for (const playerTo of this.players) {
+            playerTo.socket.send(JSON.stringify({event: 'remCard', data: {
+                type: 'desk', card: cards.length
+            }})); 
+
+            if (player !== playerTo)
+                playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
+                    type: 'player',
+                    name: player.name,
+                    card: cards.length
+                }})); 
         }
     }
 
@@ -218,12 +217,12 @@ module.exports = class Game {
         const allCards = allAttackCards.concat(allDefenceCards);
         const playersCanAdd = addCardsPlayers.filter(player => player.cards.some(card => allCards.some(acard => acard.name === card.name)));
         const playerGenerators = [];
-        setTimeout(() => playerGenerators.forEach(gen => gen.next(true)), 15000);
+        //setTimeout(() => playerGenerators.forEach(gen => gen.next(true)), 15000);
         const checkDefencePlayerOverflow = () => allAttackCards.length >= 6 || allAttackCards.length >= defencePlayer.cards.length + allDefenceCards.length;
         let lastCard = null;
 
         for (let playerAdd of playersCanAdd) {
-            const playerCardsGenerator = this.waitCards(player);
+            const playerCardsGenerator = this.waitCards(playerAdd);
             playerGenerators.push(playerCardsGenerator);
 
             for (let card of playerCardsGenerator) {
@@ -300,6 +299,7 @@ module.exports = class Game {
         const allAttackCards = []; // max length 6 
         const allDefenceCards = [];
 
+        if (!player || ! defencePlayer) debugger
         //нельзя подкидывать больше карт чем на руке 
         //атакующий пока у него есть карты подкидывает их, защищающийся отбивается, 
         //после того как у атакующего нечем ходить вступают другие игроки 
@@ -308,12 +308,15 @@ module.exports = class Game {
         //атака player'ом defencePlayer'а
         {
             const playerCardsGenerator = this.waitCards(player);
-            setTimeout(() => playerCardsGenerator.next(true), 15000);
+            //setTimeout(() => playerCardsGenerator.next(true), 15000);
     
             for (let card of playerCardsGenerator) {
                 card = await card;
-                if (!card && allAttackCards.length) break; // игрок не захотел подкидывать дальше 
-                if (card === Symbol.for('break'))  //timeout
+                if (!card && allAttackCards.length) {
+                    playerCardsGenerator.next(true); 
+                    break;
+                } // игрок не захотел подкидывать дальше 
+                if (!card || card === Symbol.for('break'))  //timeout
                     card = player.cards[0];
     
                 player.cards.splice(player.cards.indexOf(card), 1);
@@ -321,53 +324,56 @@ module.exports = class Game {
                 this.playerAttackBroadcast(player, card);
                 
                 //больше нечего подкидывать/отбивающемуся больше нечем отбиваться
-                if (!player.cards.some(pcard => card.name === pcard.name) || defencePlayer.cards.length < 2) 
-                    break;
-            }
-
-            playerCardsGenerator.next(true); 
+                if (card && (!player.cards.some(pcard => card.name === pcard.name) || defencePlayer.cards.length < 2)) {
+                    playerCardsGenerator.next(true); 
+                }
+            }   
         }
-        
+        //здесь баг. если у отбивающего осталось 2 карты, а у атакующего 3 одинаковых, атакующий может кинуть 3
         //оборона
         {
-            const defencePlayerCardsGenerator = this.waitCards(defencePlayer);
+            
             let timer = null;
             let playerTake = false;
             let lastBito = 0;
 
+            //проблема с беру. добавляются левые карты
             //пока все карты не побиты
             outer: while(this.isBito(allAttackCards, allDefenceCards) !== allAttackCards.length) {
+                const defencePlayerCardsGenerator = this.waitCards(defencePlayer);
                 if (this.isBito(allAttackCards, defencePlayer.cards.concat(allDefenceCards)) < allAttackCards.length) {
                     playerTake = true; //нечем биться, берёт
                     break;
                 }
 
-                timer = setTimeout(() => playerCardsGenerator.next(true), 15000);
+                timer// = setTimeout(() => playerCardsGenerator.next(true), 15000);
 
                 for (let card of defencePlayerCardsGenerator) {
                     card = await card;
                     if (!card || card === Symbol.for('break')) { //берёт
                         playerTake = true;
+                        defencePlayerCardsGenerator.next(true);
                         break outer; 
                     }
                     //положил неподходящую карту. ждём подходящую
                     let newBito = this.isBito(allAttackCards, allDefenceCards.concat([card]));
-                    if (newBito < lastBito) continue; 
+                    if (newBito <= lastBito) continue; 
                     lastBito = newBito;
 
                     defencePlayer.cards.splice(defencePlayer.cards.indexOf(card), 1);
                     allDefenceCards.push(card);
                     this.playerAttackBroadcast(defencePlayer, card);
 
-                    if (allAttackCards.length === allDefenceCards.length) 
-                        break; //отбился
+                    if (allAttackCards.length === allDefenceCards.length) {
+                        defencePlayerCardsGenerator.next(true); //отбился
+                    }
                 }
 
                 clearTimeout(timer);
                 await this.waitAllAdditionCards(this.players.filter(user => defencePlayer !== user), defencePlayer, allAttackCards, allDefenceCards);
             }
 
-            defencePlayerCardsGenerator.next(true);
+            //defencePlayerCardsGenerator.next(true);
 
             if (playerTake) {
                 // this.changeStatus(defencePlayer);
@@ -381,7 +387,7 @@ module.exports = class Game {
 
                 for (const playerTo of this.players) {
                     playerTo.socket.send(JSON.stringify({event: 'remCard', data: {
-                        type: 'desc', card: allAttackCards.length + allDefenceCards.length
+                        type: 'desk', card: allAttackCards.length + allDefenceCards.length
                     }}));
                     playerTo.socket.send(JSON.stringify({event: 'addCard', data: {
                         type: 'dump', card: allAttackCards.length + allDefenceCards.length
@@ -391,8 +397,9 @@ module.exports = class Game {
 
             // раздать 
             for (let i = 0; i < this.players.length; i ++) {
+                //тут баг. атакующему раздали, защищающемуся нет
                 const index = getOverflowIndex(currentPlayerIndex + i, this.players.length);
-                if (index === defencePlayerIndex) continue;
+                if (i !== this.players.length - 1 && index === defencePlayerIndex) continue; //баг тут. всегда пропускается defence
                 const player = i === this.players.length - 1 ? defencePlayer : this.players[index];
                 if (player.cards.length > 5) continue;
 
@@ -402,7 +409,7 @@ module.exports = class Game {
 
                 if (cardsToAdd > 0)
                     for (const playerTo of this.players) {
-                        player.socket.send(JSON.stringify({event: 'remCard', data: {
+                        playerTo.socket.send(JSON.stringify({event: 'remCard', data: {
                             type: 'deck',
                             card: cardsToAdd
                         }}));
@@ -439,7 +446,8 @@ module.exports = class Game {
     }
 
     changeStatus(user) {
-        user.ready = !!(this.playersReady += (!user.ready || -1));
+        user.ready = !user.ready;
+        this.playersReady += user.ready ? 1 : -1;
 
         for (const userTo of this.players) {
             userTo.socket.send(JSON.stringify({event: 'changeStatus', data: {

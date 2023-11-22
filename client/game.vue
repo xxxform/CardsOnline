@@ -19,19 +19,35 @@
         </div>
         <div class="fields">
             <div class="deck">
+                <div class="cardsRest" v-show="deck.length">{{ deck.length }}</div>
                 <div class="trump">{{ trump }}</div>
                 <div class="cards">
                     <span v-for="(card, i) in deck">
-                        <span class="card"></span>
+                        <span class="card">
+                            <template v-if="card.suit">
+                                <span class="nameUp">{{ card.name }} <br>  {{ card.suit }} </span>
+                                <span class="nameDown">{{ card.name }}<br> {{ card.suit }}</span>
+                            </template>
+                        </span>
                     </span>
                 </div>
             </div>
             <div class="desk">
-
+                <div class="cards">
+                    <span v-for="(card, i) in desk">
+                        <span class="card">
+                            <span class="nameUp">{{ card.name }} <br>  {{ card.suit }}</span>
+                            <span class="nameDown">{{ card.name }}<br> {{ card.suit }}</span>
+                        </span>
+                    </span>
+                </div>
             </div>
             <div class="dump">
 
             </div>
+        </div>
+        <div class="info">
+            <p>{{ info }}</p>
         </div>
     </div>
 </template>
@@ -44,11 +60,12 @@ export default {
     data() {
         return {
             users: [],
-            deck: [{},{},{},{}],
-            desk: [{},{},{},{}],
-            dump: [{},{},{},{}],
+            deck: [],
+            desk: [],
+            dump: [],
             trump: null,
-            started: false
+            started: false,
+            info: ''
         }
     },
     props: {
@@ -70,56 +87,59 @@ export default {
                 name: card.name
             }}));
         },
+        showInfo(text, time = 4000) {
+            this.info = text;
+            setTimeout(() => this.info = '', time);
+        },
         handler(event) {
             const message = JSON.parse(event.data);
 
             //['♠', '♥', '♣', '♦']
-            const cards = [
-                {suit: '♥', name: '10'},
-                {suit: '♦', name: 'Т'},
-                {suit: '♠', name: 'В'}, {},
-                {suit: '♣', name: '6'},
-            ];
+            // const cards = [
+            //     {suit: '♥', name: '10'},
+            //     {suit: '♦', name: 'Т'},
+            //     {suit: '♠', name: 'В'}, {},
+            //     {suit: '♣', name: '6'},
+            // ];
 
-            const users = [
-                {name: '1', cards},
-                {name: '1'},
-                {name: '1', cards}, 
-                {name: '1'},
-            ]
+            // const users = [
+            //     {name: '1', cards},
+            //     {name: '1'},
+            //     {name: '1', cards}, 
+            //     {name: '1'},
+            // ]
 
             if (message.event === 'addUser') {
-                message.data.cards = cards;
-                this.users.push(message.data);
+                //message.data.cards = cards;
+                this.users.push(Object.assign(message.data, {cards: []}));
             } else
             if (message.event === 'remUser') {
                 this.users.splice(this.users.findIndex(user => user.name === message.data.name), 1);
             } else
             if (message.event === 'addCard') {
                 const cards = message.data.type === 'player' 
-                    ? this.users.find(({name}) => name === message.data.name)
-                    : this[message.event.type];
-
-                cards.push(message.data.card.suit ? message.data.card 
-                    : (new Array(message.data.card)).fill({}));
+                    ? this.users.find(({name}) => name === message.data.name).cards
+                    : this[message.data.type];
+                if (message.data.card.suit) cards.push(message.data.card);
+                else cards.push(...(new Array(message.data.card)).fill({}));
             } else
             if (message.event === 'remCard') {
                 const cards = message.data.type === 'player' 
-                    ? this.users.find(({name}) => name === message.data.name)
-                    : this[message.event.type];
+                    ? this.users.find(({name}) => name === message.data.name).cards
+                    : this[message.data.type];
 
                 if (message.data.card.suit) 
                     cards.splice(cards.findIndex(({name, suit}) =>
                         name === message.data.card.name && suit === message.data.card.suit), 1);
                 else 
-                    cards.splice(cards.length - 1 - message.data.card, message.data.card);
+                    cards.splice(cards.length - message.data.card, message.data.card);
 
             } else
             if (message.event === 'changeStatus') {
                 const user = this.users.find(user => user.name === message.data.name);
                 user.ready = message.data.ready;
                 if (this.started && user.ready && user.name === this.username) {
-                    alert('Ваш ход!');
+                    this.showInfo('Ваш ход!');
                 }
             } else
             if (message.event === 'info') {
@@ -131,14 +151,14 @@ export default {
                 } else
                 if (message.data.type === 'gameStatus') {
                     if (this.started = message.data.started) {
-                        alert('Игра началась!');
+                        this.showInfo('Игра началась!');
                     } else {
-                        alert(`Игра окончена! ${message.data.fool ? message.data.fool + ' проиграл!' : 'Ничья!'}`);
+                        this.showInfo(`Игра окончена! ${message.data.fool ? message.data.fool + ' проиграл!' : 'Ничья!'}`);
                     }
                 }
             } else 
             if (message.event === 'setTrump') {
-                this.trump = message.event.data;
+                this.trump = message.data;
             }
         }
     },
@@ -152,6 +172,18 @@ export default {
 </script>
 
 <style scoped>
+    .info {
+        position: absolute;
+        top: 30vh;
+        bottom: 40vh;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 3.5em;
+    }
+
     .fields {
         z-index: -3;
         position: absolute;
@@ -166,6 +198,21 @@ export default {
         > .desk {
             width: 60vw;
             height: 40vh;
+            .cards {
+                display: flex;
+                justify-content: center;
+                flex-wrap: wrap;
+                margin: 0;
+                height: 100%;
+                > span {
+                    width: 10%;
+                    position: relative;
+                    > .card {
+                        position: relative;
+                        min-width: inherit;
+                    }
+                }
+            }
         }
 
         > .dump {
@@ -177,7 +224,7 @@ export default {
             width: 15vw;
             height: 30vh;
             position: relative;
-            .trump {
+            .trump, .cardsRest {
                 position: absolute;
                 width: 100%;
                 height: 100%;
@@ -185,6 +232,10 @@ export default {
                 display: flex;
                 justify-content: center;
                 align-items: center;
+            }
+            .cardsRest {
+                top: -20vh;
+                font-size: 3.5em;
             }
             .cards > span {
                 width: 0;
@@ -233,10 +284,11 @@ export default {
         .cards {
             display: flex;
             justify-content: center;
+            flex-wrap: wrap;
             margin: 0;
             height: 100%;
             > span {
-                width: inherit;
+                width: 10%;
                 position: relative;
                 > .card {
                     position: relative;
