@@ -1,10 +1,10 @@
 <template>
-    <div class="wrapper">
+    <div class="authWrapper">
         <div class="content">
             <h1>Введите своё имя</h1>
             <input type="text" v-model="userName" placeholder="Введите имя"><br>
             <button @click="auth(userName)">Войти</button>
-            <p class="info">{{info}}</p>
+            <p class="information">{{info}}</p>
         </div>
     </div>
 </template>
@@ -50,7 +50,7 @@ export default {
 </script>
 
 <style scoped>
-    .wrapper {
+    .authWrapper {
         position: absolute;
         top: 0;
         bottom: 0;
@@ -59,21 +59,21 @@ export default {
         display: flex;
         justify-content: center;
         align-items: center;
-    }
-    .content {
-        width: 50vw;
-        height: 50vh;
-    }
-    h1 {
-        text-align: center;
-    }
-    input, button {
-        width: 100%
-    }
-    button {
-        margin-top: 1em
-    }
-    .info {
-        color: red;
+        .content {
+            width: 50vw;
+            height: 50vh;
+            > h1 {
+                text-align: center;
+            }
+            > input, > button {
+                width: 100%
+            }
+            > button {
+                margin-top: 1em
+            }
+            .information {
+                color: red;
+            }
+        }
     }
 </style>

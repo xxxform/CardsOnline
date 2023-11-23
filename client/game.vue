@@ -103,7 +103,11 @@ export default {
                         return user.cards
                             .toSorted((a,b) => toNum(a.name) < toNum(b.name) ? 1 : -1)
                             .toSorted((a,b) => a.suit > b.suit ? 1 : -1)
-                            .toSorted((a,b) => this.trump === a.suit ? 1 : 0);
+                            .toSorted((a,b) => 
+                                a.suit === this.trump ^ b.suit === this.trump 
+                                    ? a.suit === this.trump ? 1 : -1 
+                                    : 0
+                            );
                     });
                 }
             } else

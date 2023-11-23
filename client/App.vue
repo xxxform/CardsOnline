@@ -21,27 +21,27 @@
             }
         },
         async mounted() {
-            let socket = new WebSocket("ws://192.168.0.172:5000");
+            const urlParams = new URLSearchParams(window.location.search);
+			const address = urlParams.get('serverip') || 'localhost';
 
-            await new Promise(res => {
-                socket.onopen = event => {
-                    res();
+            let socket = new WebSocket(`ws://${address}:5000`);
+            try {
+                socket.onclose = event => {
+                    console.log('Соединение закрыто');
                 }
-            });
 
-            this.socket = socket;
+                await new Promise((resolve, reject) => {
+                    socket.onopen = resolve;
+                    socket.onerror = reject;
+                });
 
-            socket.onclose = event => {
-                console.error(event)
+                this.socket = socket;
+            } catch(e) {
+                alert(`Не удалось подключиться к серверу ${socket.url}`)
             }
-        },
-        methods: {
-
         }
     }
-
-    
 </script>
 
-<style>
+<style scoped>
 </style>

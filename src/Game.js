@@ -229,8 +229,7 @@ module.exports = class Game {
 
         //setTimeout(() => playerGenerators.forEach(gen => gen.next(true)), 15000);
         const checkDefencePlayerOverflow = () => {
-            console.log(allAttackCards.length, defencePlayer.cards, allDefenceCards.length);
-            return allAttackCards.length >= 6 || allAttackCards.length >= defencePlayer.cards.length// + allDefenceCards.length;
+            return allAttackCards.length >= 6 || allAttackCards.length >= defencePlayer.cards.length;
         }
         if (checkDefencePlayerOverflow()) return;
 
@@ -316,12 +315,6 @@ module.exports = class Game {
         const allAttackCards = []; // max length 6 
         const allDefenceCards = [];
 
-        if (!player || ! defencePlayer) debugger
-        //нельзя подкидывать больше карт чем на руке 
-        //атакующий пока у него есть карты подкидывает их, защищающийся отбивается, 
-        //после того как у атакующего нечем ходить вступают другие игроки 
-        //проверка на победителя и проигравшего. Игра окончена если getNextPlayer вернул того же игрока
-
         //атака player'ом defencePlayer'а
         {
             const playerCardsGenerator = this.waitCards(player);
@@ -336,7 +329,6 @@ module.exports = class Game {
                 if (!card || card === Symbol.for('break'))  //timeout
                     card = player.cards[0];
 
-                //если у игрока две десятки, он бросил одну - комп ждет вторую, но можно кинуть и не десятку
                 if (allAttackCards.length && !allAttackCards.some(pcard => card.name === pcard.name)) continue;
     
                 player.cards.splice(player.cards.indexOf(card), 1);
@@ -350,7 +342,7 @@ module.exports = class Game {
             }   
             playerCardsGenerator.next(true);
         }
-        //todo. если можно подкинуть почему то будет бито
+
         //оборона
         {
             let timer = null;
