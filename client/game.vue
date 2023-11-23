@@ -2,15 +2,15 @@
     <div class="gameWrapper">
         <button class="buttonLeave" @click="leaveGame">Выйти</button>
         <div class="circleOfPlayers">
-            <span class="playerField" v-for="(user, i) in users" :class="{'me': user.name === username}">
-                <button @click="action" v-if="user.name === username" class="action" v-show="!started || user.ready">{{ !started ? 'Готов' : user.defence ? 'Беру' : 'Пас' }}</button>
+            <span class="playerField" v-for="(user, i) in players" :class="{'me': user.me}">
+                <button @click="action" v-if="user.me" class="action" v-show="!started || user.ready">{{ !started ? 'Готов' : user.defence ? 'Беру' : 'Пас' }}</button>
                 <p class="userName" :class="{'ready': user.ready}" >{{ user.name }} {{ user.defence ? '🛡' : '' }}</p>
                 <p class="cards">
-                    <span @click="user.name === username ? step(card) : null" v-for="(card, i) in user.cards">
-                        <span class="card" :class="{'hidden': !card.suit}">
+                    <span @click="user.me ? step(card) : null" v-for="card in user[user.me ? 'sortedCards' : 'cards']">
+                        <span class="card" :class="{'hidden': !card.suit, 'red': card.suit === '♥' || card.suit ==='♦'}">
                             <template v-if="card.suit">
-                                <span class="nameUp">{{ card.name }} <br>  {{ card.suit }} </span>
-                                <span class="nameDown">{{ card.name }}<br> {{ card.suit }}</span>
+                                <span class="nameUp">{{ card.name }} <br>  <span class="suit">{{ card.suit }}</span></span>
+                                <span class="nameDown">{{ card.name }}<br> <span class="suit">{{ card.suit }}</span></span>
                             </template>
                         </span>
                     </span>
@@ -22,11 +22,11 @@
                 <div class="cardsRest" v-show="deck.length">{{ deck.length }}</div>
                 <div class="trump">{{ trump }}</div>
                 <div class="cards">
-                    <span v-for="(card, i) in deck">
-                        <span class="card">
+                    <span v-for="card in deck">
+                        <span class="card" :class="{'red': card.suit === '♥' || card.suit ==='♦'}">
                             <template v-if="card.suit">
-                                <span class="nameUp">{{ card.name }} <br>  {{ card.suit }} </span>
-                                <span class="nameDown">{{ card.name }}<br> {{ card.suit }}</span>
+                                <span class="nameUp">{{ card.name }} <br>  <span class="suit">{{ card.suit }}</span></span>
+                                <span class="nameDown">{{ card.name }}<br> <span class="suit">{{ card.suit }}</span></span>
                             </template>
                         </span>
                     </span>
@@ -34,10 +34,10 @@
             </div>
             <div class="desk">
                 <div class="cards">
-                    <span v-for="(card, i) in desk">
-                        <span class="card">
-                            <span class="nameUp">{{ card.name }} <br>  {{ card.suit }}</span>
-                            <span class="nameDown">{{ card.name }}<br> {{ card.suit }}</span>
+                    <span v-for="card in desk">
+                        <span class="card" :class="{'red': card.suit === '♥' || card.suit ==='♦'}">
+                            <span class="nameUp">{{ card.name }} <br>  <span class="suit">{{ card.suit }}</span></span>
+                            <span class="nameDown">{{ card.name }}<br> <span class="suit">{{ card.suit }}</span></span>
                         </span>
                     </span>
                 </div>
@@ -53,9 +53,9 @@
 </template>
 
 <script>
-//самый нижний элемент(последний добавленный append) карты в дом дереве колоды будет самым верхним по z-index
-//поэтому в массив нужно делать unshift
-//todo сделать при ховере z-index или при нажатии / touchmove чтобы можно было кидать карту
+import { computed } from 'vue';
+const toNum = name => (+name || name).toString(11);
+
 export default {
     data() {
         return {
@@ -93,25 +93,19 @@ export default {
         },
         handler(event) {
             const message = JSON.parse(event.data);
-
-            //['♠', '♥', '♣', '♦']
-            // const cards = [
-            //     {suit: '♥', name: '10'},
-            //     {suit: '♦', name: 'Т'},
-            //     {suit: '♠', name: 'В'}, {},
-            //     {suit: '♣', name: '6'},
-            // ];
-
-            // const users = [
-            //     {name: '1', cards},
-            //     {name: '1'},
-            //     {name: '1', cards}, 
-            //     {name: '1'},
-            // ]
-
+            
             if (message.event === 'addUser') {
-                //message.data.cards = cards;
                 this.users.push(Object.assign(message.data, {cards: []}));
+                const user = this.users[this.users.length - 1];
+                if (user.name === this.username) {
+                    user.me = true;
+                    user.sortedCards = computed(() => {
+                        return user.cards
+                            .toSorted((a,b) => toNum(a.name) < toNum(b.name) ? 1 : -1)
+                            .toSorted((a,b) => a.suit > b.suit ? 1 : -1)
+                            .toSorted((a,b) => this.trump === a.suit ? 1 : 0);
+                    });
+                }
             } else
             if (message.event === 'remUser') {
                 this.users.splice(this.users.findIndex(user => user.name === message.data.name), 1);
@@ -137,6 +131,7 @@ export default {
             } else
             if (message.event === 'changeStatus') {
                 const user = this.users.find(user => user.name === message.data.name);
+                if (!user) return;
                 user.ready = message.data.ready;
                 if (this.started && user.ready && user.name === this.username) {
                     this.showInfo('Ваш ход!');
@@ -151,6 +146,9 @@ export default {
                 } else
                 if (message.data.type === 'gameStatus') {
                     if (this.started = message.data.started) {
+                        this.deck.length = this.desk.length = this.dump.length = 0;
+                        for (let player of this.users) player.cards.length = 0;
+                        
                         this.showInfo('Игра началась!');
                     } else {
                         this.showInfo(`Игра окончена! ${message.data.fool ? message.data.fool + ' проиграл!' : 'Ничья!'}`);
@@ -160,6 +158,13 @@ export default {
             if (message.event === 'setTrump') {
                 this.trump = message.data;
             }
+        }
+    },
+    computed: {
+        players() { //сдвинутый массив users где текущий пользователь первый
+            const thisUserIndex = this.users.findIndex(user => user.name === this.username);
+            const a = [...this.users];
+            return a.splice(thisUserIndex).concat(a);
         }
     },
     mounted() {
@@ -181,7 +186,8 @@ export default {
         display: flex;
         justify-content: center;
         align-items: center;
-        font-size: 3.5em;
+        text-align: center;
+        font-size: 3em;
     }
 
     .fields {
@@ -197,7 +203,7 @@ export default {
 
         > .desk {
             width: 60vw;
-            height: 40vh;
+            height: 30vh;
             .cards {
                 display: flex;
                 justify-content: center;
@@ -222,7 +228,7 @@ export default {
         
         > .deck {
             width: 15vw;
-            height: 30vh;
+            height: 23vh;
             position: relative;
             .trump, .cardsRest {
                 position: absolute;
@@ -243,6 +249,7 @@ export default {
             }
             .cards > span:first-child > .card {
                 transform: rotate(90deg);
+                left: 1em;
             }
         }
     }
@@ -255,8 +262,7 @@ export default {
         display: flex;
         justify-content: center;
         height: 30vh;
-        /* align-items: center; */
-        /* text-align: center; */
+
 
         .playerField {
             position: relative;
@@ -311,6 +317,9 @@ export default {
             .hidden {
                 background-color: bisque;
             }
+            > .card.red .suit {
+                color: red;
+            }
             > .card {
                 position: absolute;
                 aspect-ratio: 2/3;
@@ -319,20 +328,20 @@ export default {
                 display: inline-block;
                 border: 1px solid black;
                 background-color: white;
-                font-size: 2vh;
+                font-size: 3vh;
 
                 .nameUp {
                     position: absolute;
-                    top: .5vw;
-                    left: .5vw;
+                    top: 4%;
+                    left: 8%;
                     text-align: center;
                 }
                 
                 .nameDown {
                     transform: rotate(180deg);
                     position: absolute;
-                    bottom: .5vw;
-                    right: .5vw;
+                    bottom: 4%;
+                    right: 8%;
                     text-align: center;
                 }
             }
@@ -347,7 +356,7 @@ export default {
     button.action {
         position: absolute;
         text-align: center;
-        top: -5vh;
+        top: -6vh;
         left: 40vw;
         right: 40vw;
         font-size: 2em;

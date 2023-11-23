@@ -21,7 +21,6 @@ const rooms = [];
 
 WebSocketServer.on('connection', ws => {
     const user = { name: '', socket: null, room: null }; 
-    //те у кого room null находятся в лобби. Посылать им обновление кол-ва игроков в комнатах
 
     ws.on('message', message => {
         message = JSON.parse(message);
@@ -42,7 +41,7 @@ WebSocketServer.on('connection', ws => {
             user.socket = ws;
             usersOnServer.push(user);
 
-            return ws.send(JSON.stringify({event: 'auth', data: 'ok'})); // todo поиск комнаты в которой юзер был до потери связи
+            return ws.send(JSON.stringify({event: 'auth', data: 'ok'}));
         }
 
         if (!user.socket) return;
@@ -122,10 +121,6 @@ WebSocketServer.on('connection', ws => {
                 user.room = null;
             }
         } 
-
-        if (message.event === 'message') {
-
-        }
     });
     
     ws.on('close', message => {
@@ -141,35 +136,6 @@ WebSocketServer.on('connection', ws => {
             }
         }
     });
-
-        //поиск комнат где есть юзер, дать событие room.disconnect(user);
-
-        /*
-        if (message.wasClean) {
-            alert(`[close] Соединение закрыто чисто, код=${message.code} причина=${message.reason}`);
-          } else {
-            user.socket = new EventEmitter();
-            user.socket.on('connect', socket => {
-                user.socket = ws;
-            });
-            //теперь 
-            // например, сервер убил процесс или сеть недоступна
-            // обычно в этом случае event.code 1006
-            //alert('[close] Соединение прервано');
-
-          } */
-    
-})
-
-
-/*
-const lostConnectionUser = room.users.find(userInRoom => userInRoom === user);
-if (lostConnectionUser) {
-    lostConnectionUser.socket.emit('connect', ws);
-    ws.send(JSON.stringify({ event: 'ok', data: 'соединение восстановлено' }));
-    return;
-}
-*/
-
+});
 
 app.listen(80);
