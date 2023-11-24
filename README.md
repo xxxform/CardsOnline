@@ -20,6 +20,8 @@ DEMO: https://www.youtube.com/watch?v=6EYcq5MvrAk
   
   Websocket
 
+  Все вычисления происходят на сервере и передаются клиенту по WebSocket
+
 -----------------
 
 Установка - npm i
