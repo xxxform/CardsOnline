@@ -22,7 +22,7 @@
         },
         async mounted() {
             const urlParams = new URLSearchParams(window.location.search);
-			const address = urlParams.get('serverip') || 'localhost';
+			const address = urlParams.get('serverip') || window.location.hostname;
 
             let socket = new WebSocket(`ws://${address}:5000`);
             try {
